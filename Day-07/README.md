@@ -19,6 +19,8 @@ Automate the shutdown of Ubuntu Instances only using Ansible Conditionals
 
 Hint: Use `when` condition on ansible `gather_facts`
 
+Refer personal(Mani) analysis in loops,when -- folder
+
 
 
 
