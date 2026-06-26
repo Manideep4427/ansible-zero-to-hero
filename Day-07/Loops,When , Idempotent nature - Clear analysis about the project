@@ -1,0 +1,186 @@
+Task 1
+Create three(3) EC2 instances on AWS using Ansible loops
+
+2 Instances with Ubuntu Distribution
+1 Instance with Centos Distribution
+Hint: Use connection: local on Ansible Control node.
+
+Task 2
+Set up passwordless authentication between Ansible control node and newly created instances.
+
+Task 3
+Automate the shutdown of Ubuntu Instances only using Ansible Conditionals
+
+Hint: Use when condition on ansible gather_facts
+
+
+
+My analysis from the video :
+
+Prerequiste :
+Create a Iam user and give Ec2 permissions -full (just for demo) and create or include the key pairs and create aws Access and Secret key
+
+
+Setup EC2 Collection and Authentication
+Install boto3
+pip install boto3 --> In control node
+Install AWS Collection
+ansible-galaxy collection install amazon.aws
+Setup Vault
+Create a password for vault
+openssl rand -base64 2048 > vault.pass
+Add your AWS credentials using the below vault command
+ansible-vault create group_vars/all/pass.yml --vault-password-file vault.pass
+If you wanna edit and keep the access and secret keys 
+ansible-vault edit group_vars/all/pass.yml --vault-password-file vault.pass
+ec2_access_key: ""
+ec2_secret_key: ""
+
+
+Task1 need to create 3 Ec2 instances seems easy right ? 
+
+First thought we can create in such a way 
+
+tasks:
+  - name: Create EC2 instances
+    amazon.aws.ec2_instance:
+      name: "manage-node-1"
+      key_name: "abhi-aws-keypair"
+      instance_type: t2.micro
+      security_group: default
+      region: ap-south-1
+      aws_access_key: "{{ec2_access_key}}"  # From vault as defined
+      aws_secret_key: "{{ec2_secret_key}}"  # From vault as defined      
+      network:
+        assign_public_ip: true
+      image_id: "{{ ami-0e1d06225679bc1c5 }}"
+
+  - name: Create EC2 instances
+    amazon.aws.ec2_instance:
+      name: "manage-node-2"
+      key_name: "abhi-aws-keypair"
+      instance_type: t2.micro
+      security_group: default
+      region: ap-south-1
+      aws_access_key: "{{ec2_access_key}}"  # From vault as defined
+      aws_secret_key: "{{ec2_secret_key}}"  # From vault as defined      
+      network:
+        assign_public_ip: true
+      image_id: "ami-0f58b397bc5c1f2e8"
+
+  - name: Create EC2 instances
+    amazon.aws.ec2_instance:
+      name: "manage-node-3"
+      key_name: "abhi-aws-keypair"
+      instance_type: t2.micro
+      security_group: default
+      region: ap-south-1
+      aws_access_key: "{{ec2_access_key}}"  # From vault as defined
+      aws_secret_key: "{{ec2_secret_key}}"  # From vault as defined      
+      network:
+        assign_public_ip: true
+      image_id: "ami-0f58b397bc5c1f2e8"
+
+  But this approach is not recommended ,And the task is to create via loops 
+Ok so my second thought would be i could have create like this right 
+
+---
+- hosts: localhost
+  connection: local
+
+  tasks:
+  - name: Create EC2 instances
+    amazon.aws.ec2_instance:
+      name: "ansible_instance"
+      key_name: "abhi-aws-keypair"
+      instance_type: t2.micro
+      security_group: default
+      region: ap-south-1
+      aws_access_key: "{{ec2_access_key}}"  # From vault as defined
+      aws_secret_key: "{{ec2_secret_key}}"  # From vault as defined      
+      network:
+        assign_public_ip: true
+      image_id: "{{ item }}"                                     ------> It will be picking from the loop and runs three times 
+      tags:
+        environment: "{{ item.name }}"
+    loop:
+      - "ami-0e1d06225679bc1c5" 
+      - "ami-0f58b397bc5c1f2e8"
+      - "ami-0f58b397bc5c1f2e8"
+
+Now here seems everything good right ,But there are  only two instances created here ,Why ? Because Remember Ansible  is IDEMPOTENT  in nature ,
+So if it creates the resource with the same details it skips the details with the same name 
+
+So you need to create as below and include name too so that it can detect the change and create three instances and while referencing inlude as item.name and item.image ,
+But in the ansible it is having some issue and not picking the name ,So we have included the tag column as well .
+
+---
+- hosts: localhost
+  connection: local
+
+  tasks:
+  - name: Create EC2 instances
+    amazon.aws.ec2_instance:
+      name: "{{ item.name }}"
+      key_name: "abhi-aws-keypair"
+      instance_type: t2.micro
+      security_group: default
+      region: ap-south-1
+      aws_access_key: "{{ec2_access_key}}"  # From vault as defined
+      aws_secret_key: "{{ec2_secret_key}}"  # From vault as defined      
+      network:
+        assign_public_ip: true
+      image_id: "{{ item.image }}"
+      tags:
+        environment: "{{ item.name }}"
+    loop:
+      - { image: "ami-0e1d06225679bc1c5", name: "manage-node-1" } # Update AMI ID according 
+      - { image: "ami-0f58b397bc5c1f2e8", name: "manage-node-2" } # to your account
+      - { image: "ami-0f58b397bc5c1f2e8", name: "manage-node-3" }
+
+
+
+Task 2
+Set up passwordless authentication between Ansible control node and newly created instances.
+
+Now comes the task two to set up the passwordless authentication,
+ssh-copy-id -f "-o IdentityFile <PATH TO PEM FILE>" ubuntu@<INSTANCE-PUBLIC-IP>
+
+and try running ssh ubuntu@<INSTANCE-PUBLIC-IP> 
+
+And repeat it to all the servers ,We can use any script/loop so we can do this activity .
+
+
+Task 3
+Automate the shutdown of Ubuntu Instances only using Ansible Conditionals
+
+Hint: Use when condition on ansible gather_facts
+
+
+Here first you need to create inventory.ini 
+[all]
+ec2-user@Ip
+ubuntu@Ip
+ubuntu@Ip
+
+You might think to group them and do this right ,
+Yes you can but the issue can be you dont know what are the instances in the ini file are whether ubuntu/linux and ultimately the requirement is you need to use when condition on ansible gather_facts
+see the ansible_facts takes from the gathering_facts -->Gathering facts collects many details about the targets in that you can see details ,
+For example you can give as 
+
+ tasks:
+    - name: Print all the ansible gathered ansible_facts 
+      ansible.builtin.debug:
+        var: ansible_facts
+
+---
+- hosts: all
+  become: true
+
+  tasks:
+    - name: Shutdown ubuntu instances only
+      ansible.builtin.command: /sbin/shutdown -t now   --> we are shutting down now
+      when:
+       ansible_facts['os_family'] == "Debian"   
+
+
